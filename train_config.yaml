@@ -1,0 +1,10 @@
+option: pretrain
+batch_size: 32
+debug: False
+lr: 0.001
+epochs: 1
+num_classes: 1
+language: en
+model_output_path: models/
+model_name: baseline
+training_data_path: False

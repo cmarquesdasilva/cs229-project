@@ -1,0 +1,8 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+
+# Ignore specific file
+src/test_polygo.py
+
+# Ignore all .txt files
+*.txt
