@@ -17,7 +17,6 @@ from transformers import (
     RobertaTokenizer,
 )
 from src.toxic_dataset import (
-    PolygloToxicityBenchmark,
     ToxicityDataset,
 )
 from src.utils import check_label_distribution, save_model, model_eval

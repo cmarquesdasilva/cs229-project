@@ -11,7 +11,8 @@ def create_clusters(embeddings, texts, prompt_toxicity, num_clusters=3, device='
     kmeans = faiss.Kmeans(d, num_clusters, gpu=(device == 'cuda'))
 
     # Normalize embeddings if using cosine similarity
-    embeddings_np = embeddings.numpy()
+    embeddings_np = embeddings.cpu().numpy()
+
     faiss.normalize_L2(embeddings_np)
     
     # Train the KMeans clustering
