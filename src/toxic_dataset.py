@@ -1,48 +1,58 @@
-from torch.utils.data import DataLoader, Dataset, random_split
-from datasets import load_dataset
-import pandas as pd
+from datasets import load_dataset, concatenate_datasets, Dataset
 import torch
-from tqdm import tqdm
-
-
-def load_local_dataset(file_path):
-    """Load the local dataset from a CSV file."""
-    df = pd.read_csv(file_path)
-    dataset = []
-    for _, row in tqdm(df.iterrows(), total=len(df), desc="Loading local dataset"):
-        dataset.append({
-            'text': row['comment_text'],
-            'toxic': row['toxic']
-        })
-    return dataset
-
 
 class ToxicityDataset(Dataset):
     def __init__(self, tokenizer, split, lang=None, local_file_path=None):
         self.tokenizer = tokenizer
         self.dataset = []
 
-        # Load dataset based on split and lang
+        # Load dataset based on split and language
         if split == "train":
+            self.dataset.extend(load_dataset("textdetox/multilingual_toxicity_dataset", split=lang))
+            self.dataset.extend(self.fecth_balanced_toxi_text(split, lang))
             if lang == "en":
-                self.dataset.extend(load_dataset("textdetox/multilingual_toxicity_dataset", split=lang))
-                jigsaw_dataset = load_dataset("Arsive/toxicity_classification_jigsaw", split="validation")
+                jigsaw_dataset = load_dataset("Arsive/toxicity_classification_jigsaw", split=split)
                 jigsaw_dataset = jigsaw_dataset.rename_column("comment_text", "text")
                 self.dataset.extend(jigsaw_dataset)
-            else:
-                self.dataset.extend(load_dataset("textdetox/multilingual_toxicity_dataset", split=lang))
-        elif split == "validation" and lang == "en":
-            jigsaw_dataset = load_dataset("Arsive/toxicity_classification_jigsaw", split="validation")
-            jigsaw_dataset = jigsaw_dataset.rename_column("comment_text", "text")
-            self.dataset.extend(jigsaw_dataset)
-        elif split == "test" and lang == "en":
-            jigsaw_dataset = load_dataset("Arsive/toxicity_classification_jigsaw", split="test")
-            jigsaw_dataset = jigsaw_dataset.rename_column("comment_text", "text")
-            self.dataset.extend(jigsaw_dataset)
+                
+        else:
+            self.dataset.extent(self.fecth_balanced_toxi_text(split, lang))
+            if lang == "en":
+                jigsaw_dataset = load_dataset("Arsive/toxicity_classification_jigsaw", split=split)
+                jigsaw_dataset = jigsaw_dataset.rename_column("comment_text", "text")
+                self.dataset.extend(jigsaw_dataset)
 
         # Load local dataset if provided
         if local_file_path:
-            self.dataset.extend(load_local_dataset(local_file_path))
+            self.dataset.extend(load_dataset(data_files=local_file_path))
+
+    def fecth_balanced_toxi_text(self, split, lang):
+        # Load the dataset
+        ds = load_dataset("FredZhang7/toxi-text-3M", split=split)
+
+        # Filter by Language
+        lang_filtered_ds = ds.filter(lambda x: x["lang"] == lang)
+        
+        # Separate Toxic and Non-Toxic Samples
+        toxic_samples = lang_filtered_ds.filter(lambda x: x["is_toxic"] == 1)
+        non_toxic_samples = lang_filtered_ds.filter(lambda x: x["is_toxic"] == 0)
+
+        # Balance the Dataset by Sampling
+        min_count = len(toxic_samples)
+
+        # Randomly sample min_count examples from both toxic and non-toxic sets
+        balanced_toxic_samples = toxic_samples.select(range(min_count))
+        balanced_non_toxic_samples = non_toxic_samples.shuffle(seed=42).select(range(min_count))
+
+        # Rename is_toxic to toxic
+        balanced_toxic_samples = balanced_toxic_samples.rename_column("is_toxic", "toxic")
+        balanced_non_toxic_samples = balanced_non_toxic_samples.rename_column("is_toxic", "toxic")
+
+        # Concatenate and Shuffle the Balanced Dataset
+        balanced_dataset = concatenate_datasets([balanced_toxic_samples, balanced_non_toxic_samples]).shuffle(seed=42)
+        
+        return balanced_dataset
+
 
     def __len__(self):
         return len(self.dataset)

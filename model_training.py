@@ -39,8 +39,8 @@ def run():
     model = ToxicityClassifier(config).to(device)
 
     # Load Training Data
-    train_data = ToxicityDataset(model.tokenizer, lang=lang, local_file_path=None)
-    val_data = ToxicityDataset(model.tokenizer, lang=lang, local_file_path=None)
+    train_data = ToxicityDataset(model.tokenizer, split='train', lang=lang, local_file_path=None)
+    val_data = ToxicityDataset(model.tokenizer, split='validation', lang=lang, local_file_path=None)
 
     # Dataloaders
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, collate_fn=train_data.collate_fn)
@@ -85,13 +85,13 @@ def run():
         if val_f1 > best_f1:
             print(f"Saving model with F1: {val_f1}")
             best_f1 = val_f1
-            save_model(model, config.model_output_path, epoch, model_name)
+            save_model(model, config.model_output_path, model_name)
 
         # Write loss value to file
         loss_file.write(f"{epoch},{train_loss},{val_acc},{val_precision},{val_recall},{train_acc},{train_precision},{train_recall}\n")
 
     # Test set
-    test_data = TestingDatasetMonolingual(model.tokenizer, lang="en", local_file_path=None)
+    test_data = ToxicityDataset(model.tokenizer, lang="en", split = 'test', local_file_path=None)
     test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False, collate_fn=test_data.collate_fn)
     test_acc, test_precision, test_recall, test_f1 = model_eval(test_loader, model, device)
     print(f"Test | Acc: {test_acc} | F1: {test_f1} | Precision: {test_precision} | Recall: {test_recall}")

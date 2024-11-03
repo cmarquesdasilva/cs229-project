@@ -14,9 +14,9 @@ def check_label_distribution(dataloader):
     return label_counts
 
 
-def save_model(model, path, epoch, model_name):
+def save_model(model, path, model_name):
     """Save the model to the specified path."""
-    full_path = os.path.join(path, f"{model_name}_{epoch}.pt")
+    full_path = os.path.join(path, f"{model_name}.pt")
     torch.save(model.state_dict(), full_path)
     print(f"Model saved to {path}")
 
