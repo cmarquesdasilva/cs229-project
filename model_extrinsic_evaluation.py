@@ -34,6 +34,7 @@ def main():
         val_acc, val_precision, val_recall, val_f1 = model_eval(val_loader, model, device)
         test_acc, test_precision, test_recall, test_f1 = model_eval(test_loader, model, device)
 
+
         results[lang] = {
             'benchmark_accuracy': benchmark_acc,
             'val_accuracy': val_acc,
