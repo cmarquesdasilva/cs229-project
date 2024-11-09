@@ -4,6 +4,7 @@ from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_sc
 import torch
 from tqdm import tqdm
 from .roberta_clf import ToxicityClassifier
+from peft import PeftModel, PeftConfig
 
 # Helper Functions
 def check_label_distribution(dataloader, device):
@@ -20,10 +21,9 @@ def check_label_distribution_cpu(dataloader):
     return label_counts
 
 def check_label_distribution_gpu(dataloader):
-    # Accumulate counts on GPU
     unique_labels, counts = None, None
     for batch in dataloader:
-        labels = batch['class_ids']  # Leave on GPU
+        labels = batch['class_ids'] 
         if unique_labels is None:
             unique_labels, counts = torch.unique(labels, return_counts=True)
         else:
@@ -36,6 +36,7 @@ def save_model(model, path, model_name):
     full_path = os.path.join(path, f"{model_name}.pt")
     torch.save(model.state_dict(), full_path)
     print(f"Model saved to {path}")
+
 
 def load_model(model_path, config, device):
     """Load the model from the specified path."""
