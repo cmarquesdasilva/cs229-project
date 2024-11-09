@@ -6,3 +6,5 @@ src/test_polygo.py
 
 # Ignore all .txt files
 *.txt
+*.csv
+*.tsv

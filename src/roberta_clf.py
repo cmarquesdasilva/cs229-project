@@ -8,6 +8,7 @@ from transformers import (
     AutoModel,
     AutoTokenizer,
 )
+from peft import LoraConfig, TaskType, get_peft_model
 
 def train_model(model, batch, optimizer, device):
 
@@ -42,9 +43,18 @@ class ToxicityClassifier(nn.Module):
             self.tokenizer = AutoTokenizer.from_pretrained("FacebookAI/xlm-roberta-base")
         
         self.classifier = nn.Linear(self.model.config.hidden_size, config.num_classes)
+
+        if config.option == 'lora':
+            lora_config = LoraConfig(r=config.r, lora_alpha=1, lora_dropout=0.1,
+            target_modules=['self.query', 'self.key', 'self.value'])
+            self.model = get_peft_model(self.model, lora_config)
+            
         for name, param in self.model.named_parameters():
             if config.option == 'pretrain':
-                param.requires_grad = False
+              param.requires_grad = False
+            elif config.option == 'lora':
+              if "lora_" in name:
+                param.requires_grad = True
             else:
                 param.requires_grad = True
 
@@ -60,6 +70,12 @@ class ToxicityClassifier(nn.Module):
         last_hidden_state = outputs.last_hidden_state
         cls_output = last_hidden_state[:, 0, :]
         return cls_output
-    
-    def tokenizer(self):
-        return self.tokenizer
+
+    def merge_lora(self):
+      """Merge LoRA weights into the base model and unload LoRA layers."""
+      if hasattr(self.model, "merge_and_unload"):
+          self.model = self.model.merge_and_unload()
+          print("LoRA layers have been merged and unloaded.")
+      else:
+          raise AttributeError("The model does not support merge_and_unload.")
+

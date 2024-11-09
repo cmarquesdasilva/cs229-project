@@ -4,31 +4,32 @@ import torch
 class ToxicityDataset(Dataset):
     def __init__(self, tokenizer, split, lang=None, local_file_path=None):
         self.tokenizer = tokenizer
-        self.dataset = []
 
         # Load dataset based on split and language
+        self.dataset = self.fecth_balanced_toxi_text(split, lang)
+
         if split == "train":
-            self.dataset.extend(load_dataset("textdetox/multilingual_toxicity_dataset", split=lang))
-            self.dataset.extend(self.fecth_balanced_toxi_text(split, lang))
+            extra_datasets = []
+            extra_datasets.append(load_dataset("textdetox/multilingual_toxicity_dataset", split=lang))
             if lang == "en":
                 jigsaw_dataset = load_dataset("Arsive/toxicity_classification_jigsaw", split=split)
                 jigsaw_dataset = jigsaw_dataset.rename_column("comment_text", "text")
-                self.dataset.extend(jigsaw_dataset)
-                
+                extra_datasets.append(jigsaw_dataset)
+            self.dataset = concatenate_datasets([self.dataset] + extra_datasets)
+
         else:
-            self.dataset.extent(self.fecth_balanced_toxi_text(split, lang))
             if lang == "en":
                 jigsaw_dataset = load_dataset("Arsive/toxicity_classification_jigsaw", split=split)
                 jigsaw_dataset = jigsaw_dataset.rename_column("comment_text", "text")
-                self.dataset.extend(jigsaw_dataset)
+                self.dataset = concatenate_datasets([self.dataset,  jigsaw_dataset])
 
         # Load local dataset if provided
         if local_file_path:
-            self.dataset.extend(load_dataset(data_files=local_file_path))
+            extra_datasets.append(load_dataset(data_files=local_file_path))
 
     def fecth_balanced_toxi_text(self, split, lang):
         # Load the dataset
-        ds = load_dataset("FredZhang7/toxi-text-3M", split=split)
+        ds = load_dataset("FredZhang7/toxi-text-3M", split=split, save_infos=False, verification_mode='no_checks')
 
         # Filter by Language
         lang_filtered_ds = ds.filter(lambda x: x["lang"] == lang)
@@ -38,7 +39,7 @@ class ToxicityDataset(Dataset):
         non_toxic_samples = lang_filtered_ds.filter(lambda x: x["is_toxic"] == 0)
 
         # Balance the Dataset by Sampling
-        min_count = len(toxic_samples)
+        min_count = min(len(toxic_samples), len(non_toxic_samples)) # for test and val split
 
         # Randomly sample min_count examples from both toxic and non-toxic sets
         balanced_toxic_samples = toxic_samples.select(range(min_count))
@@ -50,7 +51,6 @@ class ToxicityDataset(Dataset):
 
         # Concatenate and Shuffle the Balanced Dataset
         balanced_dataset = concatenate_datasets([balanced_toxic_samples, balanced_non_toxic_samples]).shuffle(seed=42)
-        
         return balanced_dataset
 
 

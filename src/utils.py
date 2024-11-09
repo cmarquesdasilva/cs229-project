@@ -6,13 +6,30 @@ from tqdm import tqdm
 from .roberta_clf import ToxicityClassifier
 
 # Helper Functions
-def check_label_distribution(dataloader):
+def check_label_distribution(dataloader, device):
+    if device.type == 'cpu':
+        return check_label_distribution_cpu(dataloader)
+    else:
+        return check_label_distribution_gpu(dataloader)
+
+def check_label_distribution_cpu(dataloader):
     label_counts = Counter()
     for batch in dataloader:
         labels = batch['class_ids'].cpu().numpy()
         label_counts.update(labels)
     return label_counts
 
+def check_label_distribution_gpu(dataloader):
+    # Accumulate counts on GPU
+    unique_labels, counts = None, None
+    for batch in dataloader:
+        labels = batch['class_ids']  # Leave on GPU
+        if unique_labels is None:
+            unique_labels, counts = torch.unique(labels, return_counts=True)
+        else:
+            batch_labels, batch_counts = torch.unique(labels, return_counts=True)
+            counts = counts + torch.scatter_add(torch.zeros_like(counts), 0, batch_labels, batch_counts)
+    return dict(zip(unique_labels.cpu().numpy(), counts.cpu().numpy()))
 
 def save_model(model, path, model_name):
     """Save the model to the specified path."""
@@ -20,11 +37,14 @@ def save_model(model, path, model_name):
     torch.save(model.state_dict(), full_path)
     print(f"Model saved to {path}")
 
-
 def load_model(model_path, config, device):
     """Load the model from the specified path."""
     model = ToxicityClassifier(config)
     model.load_state_dict(torch.load(model_path, map_location=device))
+    
+    if config.option == 'lora':
+      model.merge_lora()
+    
     model.to(device)
     model.eval()
     return model
@@ -52,9 +72,9 @@ def model_eval(dataloader, model, device, output_file=None):
         y_pred.extend(preds)
         texts.extend(b_texts)
 
-    f1 = f1_score(y_true, y_pred, average='macro')
-    precision = precision_score(y_true, y_pred, average='macro')
-    recall = recall_score(y_true, y_pred, average='macro')
+    f1 = f1_score(y_true, y_pred, average=None)
+    precision = precision_score(y_true, y_pred, average=None)
+    recall = recall_score(y_true, y_pred, average=None)
     acc = accuracy_score(y_true, y_pred)
 
     if output_file:
