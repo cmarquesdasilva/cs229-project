@@ -143,7 +143,7 @@ class PolygloToxicityBenchmark(Dataset):
 
     def pad_data_for_clustering(self, data):
         texts = [x['prompt'] for x in data]
-        prompt_toxicity = [x['prompt_toxicity'] for x in data]
+        prompt_toxicity = [x['toxicity'] for x in data]
 
         encoding = self.tokenizer(texts, return_tensors='pt', padding="max_length", truncation=True, max_length=512)
         token_ids = torch.LongTensor(encoding['input_ids'])
