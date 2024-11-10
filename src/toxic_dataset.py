@@ -14,7 +14,10 @@ class ToxicityDataset(Dataset):
         """
         self.tokenizer = tokenizer
         self._split = split
-        self.langs = [langs] if isinstance(langs, str) else langs
+        if isinstance(langs, str):
+            self.langs = langs.split(",") if "," in langs else [langs]
+        else:
+            self.langs = langs
         self.dataset = self.prepare_multilingual_dataset(local_file_path)
 
     def prepare_multilingual_dataset(self, local_file_path):
@@ -47,7 +50,7 @@ class ToxicityDataset(Dataset):
 
     def fetch_balanced_toxi_text(self, lang):
         """Fetches a balanced dataset with toxic and non-toxic samples for a specified language."""
-        ds = load_dataset("FredZhang7/toxi-text-3M", split=self._split)
+        ds = load_dataset("FredZhang7/toxi-text-3M", split=self._split, save_infos=False, verification_mode='no_checks')
         ds_lang = ds.filter(lambda x: x["lang"] == lang)
         toxic_samples = ds_lang.filter(lambda x: x["is_toxic"] == 1)
         non_toxic_samples = ds_lang.filter(lambda x: x["is_toxic"] == 0)

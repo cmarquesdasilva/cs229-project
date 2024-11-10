@@ -39,8 +39,8 @@ def run():
     model = ToxicityClassifier(config).to(device)
 
     # Load Training Data
-    train_data = ToxicityDataset(model.tokenizer, split='train', lang=langs, local_file_path=None)
-    val_data = ToxicityDataset(model.tokenizer, split='validation', lang=langs, local_file_path=None)
+    train_data = ToxicityDataset(model.tokenizer, split='train', langs=langs, local_file_path=None)
+    val_data = ToxicityDataset(model.tokenizer, split='validation', langs=langs, local_file_path=None)
 
     # Dataloaders
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, collate_fn=train_data.collate_fn)
