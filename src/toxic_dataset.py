@@ -2,57 +2,62 @@ from datasets import load_dataset, concatenate_datasets, Dataset
 import torch
 
 class ToxicityDataset(Dataset):
-    def __init__(self, tokenizer, split, lang=None, local_file_path=None):
+    def __init__(self, tokenizer, split, langs=None, local_file_path=None):
+        """
+        Initializes the dataset for toxicity classification with multilingual support.
+        
+        Args:
+            tokenizer: The tokenizer used to encode text data.
+            split (str): The dataset split to load ('train', 'test', or 'validation').
+            langs (list or str): Languages for the dataset, can be a single language (str) or a list of languages.
+            local_file_path (str): Optional path to a local dataset file.
+        """
         self.tokenizer = tokenizer
+        self._split = split
+        self.langs = [langs] if isinstance(langs, str) else langs
+        self.dataset = self.prepare_multilingual_dataset(local_file_path)
 
-        # Load dataset based on split and language
-        self.dataset = self.fecth_balanced_toxi_text(split, lang)
+    def prepare_multilingual_dataset(self, local_file_path):
+        """Prepares and returns a multilingual dataset by merging datasets for each specified language."""
+        language_datasets = [self.fetch_balanced_toxi_text(lang) for lang in self.langs]
+        combined_dataset = concatenate_datasets(language_datasets)
 
-        if split == "train":
-            extra_datasets = []
-            extra_datasets.append(load_dataset("textdetox/multilingual_toxicity_dataset", split=lang))
+        # Add extra datasets based on split and language
+        if self._split == "train":
+            combined_dataset = self.add_extra_datasets(combined_dataset)
+        
+        # Include local dataset if provided
+        if local_file_path:
+            local_dataset = load_dataset("text", data_files=local_file_path)["train"]
+            combined_dataset = concatenate_datasets([combined_dataset, local_dataset])
+
+        return combined_dataset.shuffle(seed=42)
+
+    def add_extra_datasets(self, base_dataset):
+        """Adds additional datasets for training or specific languages."""
+        extra_datasets = []
+        for lang in self.langs:
+            if lang in ['en', 'ru', 'uk', 'de', 'es', 'am', 'zh', 'ar', 'hi']:
+                extra_datasets.append(load_dataset("textdetox/multilingual_toxicity_dataset", split=lang))
             if lang == "en":
-                jigsaw_dataset = load_dataset("Arsive/toxicity_classification_jigsaw", split=split)
+                jigsaw_dataset = load_dataset("Arsive/toxicity_classification_jigsaw", split=self._split)
                 jigsaw_dataset = jigsaw_dataset.rename_column("comment_text", "text")
                 extra_datasets.append(jigsaw_dataset)
-            self.dataset = concatenate_datasets([self.dataset] + extra_datasets)
+        return concatenate_datasets([base_dataset] + extra_datasets)
 
-        else:
-            if lang == "en":
-                jigsaw_dataset = load_dataset("Arsive/toxicity_classification_jigsaw", split=split)
-                jigsaw_dataset = jigsaw_dataset.rename_column("comment_text", "text")
-                self.dataset = concatenate_datasets([self.dataset,  jigsaw_dataset])
-
-        # Load local dataset if provided
-        if local_file_path:
-            extra_datasets.append(load_dataset(data_files=local_file_path))
-
-    def fecth_balanced_toxi_text(self, split, lang):
-        # Load the dataset
-        ds = load_dataset("FredZhang7/toxi-text-3M", split=split, save_infos=False, verification_mode='no_checks')
-
-        # Filter by Language
-        lang_filtered_ds = ds.filter(lambda x: x["lang"] == lang)
+    def fetch_balanced_toxi_text(self, lang):
+        """Fetches a balanced dataset with toxic and non-toxic samples for a specified language."""
+        ds = load_dataset("FredZhang7/toxi-text-3M", split=self._split)
+        ds_lang = ds.filter(lambda x: x["lang"] == lang)
+        toxic_samples = ds_lang.filter(lambda x: x["is_toxic"] == 1)
+        non_toxic_samples = ds_lang.filter(lambda x: x["is_toxic"] == 0)
         
-        # Separate Toxic and Non-Toxic Samples
-        toxic_samples = lang_filtered_ds.filter(lambda x: x["is_toxic"] == 1)
-        non_toxic_samples = lang_filtered_ds.filter(lambda x: x["is_toxic"] == 0)
+        min_count = min(len(toxic_samples), len(non_toxic_samples))
+        toxic_balanced = toxic_samples.select(range(min_count))
+        non_toxic_balanced = non_toxic_samples.shuffle(seed=42).select(range(min_count))
 
-        # Balance the Dataset by Sampling
-        min_count = min(len(toxic_samples), len(non_toxic_samples)) # for test and val split
-
-        # Randomly sample min_count examples from both toxic and non-toxic sets
-        balanced_toxic_samples = toxic_samples.select(range(min_count))
-        balanced_non_toxic_samples = non_toxic_samples.shuffle(seed=42).select(range(min_count))
-
-        # Rename is_toxic to toxic
-        balanced_toxic_samples = balanced_toxic_samples.rename_column("is_toxic", "toxic")
-        balanced_non_toxic_samples = balanced_non_toxic_samples.rename_column("is_toxic", "toxic")
-
-        # Concatenate and Shuffle the Balanced Dataset
-        balanced_dataset = concatenate_datasets([balanced_toxic_samples, balanced_non_toxic_samples]).shuffle(seed=42)
-        return balanced_dataset
-
+        balanced_dataset = concatenate_datasets([toxic_balanced, non_toxic_balanced]).shuffle(seed=42)
+        return balanced_dataset.rename_column("is_toxic", "toxic")
 
     def __len__(self):
         return len(self.dataset)
@@ -72,17 +77,13 @@ class ToxicityDataset(Dataset):
 
     def collate_fn(self, all_data):
         token_ids, attention_mask, texts, class_ids = self.pad_data(all_data)
-        
         class_ids = torch.tensor(class_ids, dtype=torch.float)
-        batched_data = {
-                'token_ids': token_ids,
-                'attention_mask': attention_mask,
-                'texts': texts,
-                'class_ids': class_ids
-            }
-
-        return batched_data  
-    
+        return {
+            'token_ids': token_ids,
+            'attention_mask': attention_mask,
+            'texts': texts,
+            'class_ids': class_ids
+        }
 
 class PolygloToxicityBenchmark(Dataset):
     """

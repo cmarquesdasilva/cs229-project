@@ -30,7 +30,7 @@ def run():
         config = SimpleNamespace(**config_dict)
 
     batch_size = config.batch_size
-    lang = config.language
+    langs = config.language
     model_name = config.model_name
     lr = config.lr
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -39,8 +39,8 @@ def run():
     model = ToxicityClassifier(config).to(device)
 
     # Load Training Data
-    train_data = ToxicityDataset(model.tokenizer, split='train', lang=lang, local_file_path=None)
-    val_data = ToxicityDataset(model.tokenizer, split='validation', lang=lang, local_file_path=None)
+    train_data = ToxicityDataset(model.tokenizer, split='train', lang=langs, local_file_path=None)
+    val_data = ToxicityDataset(model.tokenizer, split='validation', lang=langs, local_file_path=None)
 
     # Dataloaders
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, collate_fn=train_data.collate_fn)
