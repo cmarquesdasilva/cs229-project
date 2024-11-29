@@ -3,8 +3,9 @@ from collections import Counter
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 import torch
 from tqdm import tqdm
-from .roberta_clf import ToxicityClassifier
-from peft import PeftModel, PeftConfig
+from .roberta_clf import ToxicityClassifier, MultitaskClassifier
+import pandas as pd
+from datasets import Dataset
 
 # Helper Functions
 def check_label_distribution(dataloader, device):
@@ -37,11 +38,27 @@ def save_model(model, path, model_name):
     torch.save(model.state_dict(), full_path)
     print(f"Model saved to {path}")
 
+def load_model(model_path, config, device, model_type='Toxicity'):
+    """
+    Load and initialize the model based on the model_type parameter.
 
-def load_model(model_path, config, device):
-    """Load the model from the specified path."""
-    model = ToxicityClassifier(config)
-    model.load_state_dict(torch.load(model_path, map_location=device))
+    Args:
+        model_type (str): The type of model to load ('Multitask' or other types).
+        config (object): The configuration object for the model.
+
+    Returns:
+        model (nn.Module): The initialized model.
+    """
+    model_type = model_type.lower()
+    if model_type == 'multitask':
+        model = MultitaskClassifier(config)
+        model.load_state_dict(torch.load(model_path, map_location=device))
+
+    elif model_type == 'toxicity':
+        model = ToxicityClassifier(config)
+        model.load_state_dict(torch.load(model_path, map_location=device))
+    else:
+        raise ValueError(f"Unsupported model type: {model_type}")
     
     if config.option == 'lora':
       model.merge_lora()
@@ -50,42 +67,83 @@ def load_model(model_path, config, device):
     model.eval()
     return model
 
-def model_eval(dataloader, model, device, output_file=None):
+def model_eval(dataloader, model, device, task='toxicity'):
 
-    model.eval() # Switch to eval model, will turn off randomness like dropout.
-    y_true = []
-    y_pred = []
-    texts = []
-
-    for step, batch in enumerate(tqdm(dataloader, desc=f'eval', disable=False)):
-        b_ids, b_mask, b_texts, b_labels = batch['token_ids'],batch['attention_mask'],  \
-                                                        batch['texts'], batch['class_ids']
-
-        b_ids = b_ids.to(device)
-        b_mask = b_mask.to(device)
-
-        logits = model(b_ids, b_mask)
-        logits = logits.detach().cpu().numpy()
-        preds = (logits > 0).astype(int).flatten() #np.argmax(logits, axis=1).flatten()
-
-        b_labels = b_labels.flatten()
-        y_true.extend(b_labels)
-        y_pred.extend(preds)
-        texts.extend(b_texts)
-
-    f1 = f1_score(y_true, y_pred, average=None)
-    precision = precision_score(y_true, y_pred, average=None)
-    recall = recall_score(y_true, y_pred, average=None)
-    acc = accuracy_score(y_true, y_pred)
-
-    if output_file:
-        with open(output_file, 'w') as f:
-            for i in range(len(y_true)):
-                error = 0 if y_true[i] == y_pred[i] else 1
-                f.write(f"{texts[i]}\t{y_true[i]}\t{y_pred[i]}\t{error}\n")
+    if task == 'toxicity':
+        acc, precision, recall, f1 = model_eval_toxicity_task(dataloader, model, device)
+    elif task == 'translation':
+        acc, precision, recall, f1 = model_eval_translation_task(dataloader, model, device)
+    else:
+        raise ValueError(f"Task {task} not supported.")
     
     return acc, precision, recall, f1
 
+def model_eval_translation_task(dataloader, model, device):
+    model.eval()
+    y_preds = [] 
+    y_true_labels = [] # true labels
+
+    with torch.no_grad():
+        for batch in tqdm(dataloader, desc="Evaluation", disable=False):
+            # Extract inputs
+            b_ids = batch['token_ids'].to(device)  # Assumed to be already on GPU
+            b_mask = batch['attention_mask'].to(device)  # Assumed to be already on GPU
+            b_ids_2 = batch['non_en_token_ids'].to(device)  # Assumed to be already on GPU
+            b_mask_2 = batch['non_en_attention_mask'].to(device)  # Assumed to be already on GPU
+            b_labels = batch['class_ids'].to(device).flatten()  # Ensure flattened labels
+
+            # Forward pass
+            logits = model.predict_translation_id(b_ids, b_mask, b_ids_2, b_mask_2)
+            preds = (logits > 0).long().view(-1).cpu().tolist()  # Thresholding logits
+            b_labels = b_labels.cpu().tolist()  # Move labels to CPU
+
+            # Accumulate results
+            y_preds.extend(preds)
+            y_true_labels.extend(b_labels)
+
+    # Metrics calculation
+    acc = accuracy_score(y_true_labels, y_preds)
+    precision = precision_score(y_true_labels, y_preds, average=None)
+    recall = recall_score(y_true_labels, y_preds, average=None)
+    f1 = f1_score(y_true_labels, y_preds, average=None)
+
+    return acc, precision, recall, f1
+
+def model_eval_toxicity_task(dataloader, model, device):
+    print(f"Number of batches in the DataLoader: {len(dataloader)}")
+    model.eval()
+    y_preds = []
+    y_true_labels = [] 
+    texts = []
+    with torch.no_grad():
+        for batch in tqdm(dataloader, desc="Evaluation", disable=False):
+            # Extract inputs and ensure consistency
+            b_ids = batch['token_ids'].to(device)  # Assumed to be already on GPU
+            b_mask = batch['attention_mask'].to(device)  # Assumed to be already on GPU
+            b_texts = batch['texts']  # Assumed to be a list (no GPU operation needed)
+            b_labels = batch['class_ids'].to(device).flatten()  # Ensure flattened labels
+
+            # Forward pass
+            if hasattr(model, 'predict_toxicity'):
+                logits = model.predict_toxicity(b_ids, b_mask)  # Use predict_toxicity if available
+            else:
+                logits = model(b_ids, b_mask)  # Otherwise, use the model directly
+
+            preds = (logits > 0).long().view(-1).cpu().tolist()  # Thresholding logits
+            b_labels = b_labels.cpu().tolist()  # Move labels to CPU
+
+            # Accumulate results
+            y_true_labels.extend(b_labels)
+            y_preds.extend(preds)
+            texts.extend(b_texts)
+
+    # Metrics calculation
+    acc = accuracy_score(y_true_labels, y_preds)
+    precision = precision_score(y_true_labels, y_preds, average=None)
+    recall = recall_score(y_true_labels, y_preds, average=None)
+    f1 = f1_score(y_true_labels, y_preds, average=None)
+
+    return acc, precision, recall, f1
 
 def extract_embeddings(model, dataloader, device):
     embeddings = []
@@ -106,3 +164,52 @@ def extract_embeddings(model, dataloader, device):
 
     embeddings = torch.cat(embeddings, dim=0)
     return embeddings, texts, prompt_toxicity
+
+def save_losses(translation_loss, toxicity_loss, loss_log_file, batch_num, epoch):
+    """
+    Save the translation loss and toxicity loss after each batch update.
+
+    Args:
+        translation_loss (float): The loss value for the translation task.
+        toxicity_loss (float): The loss value for the toxicity task.
+        loss_log_file (str): The file path to save the loss values.
+        batch_num (int): The current batch number.
+        epoch (int): The current epoch number.
+    """
+    with open(loss_log_file, 'a') as f:
+        f.write(f"Epoch: {epoch}, Batch: {batch_num}, Translation Loss: {translation_loss:.4f}, Toxicity Loss: {toxicity_loss:.4f}\n")
+
+def store_predictions(dataloader, model, device):
+    """
+    Run model inference, store the predictions in the dataset
+
+    Args:
+        dataloader (DataLoader): The DataLoader for the dataset.
+        model (nn.Module): The model to use for inference.
+        device (torch.device): The device to run the model on.
+    Returns:
+        df (pd.DataFrame): The dataset with the predictions added.
+    """
+    model.eval()
+    predictions = []
+
+    with torch.no_grad():
+        for batch in tqdm(dataloader, desc="Inference", disable=False):
+            # Extract inputs
+            b_ids = batch['token_ids'].to(device)  # Assumed to be already on GPU
+            b_mask = batch['attention_mask'].to(device)  # Assumed to be already on GPU
+
+            # Forward pass
+            if hasattr(model, 'predict_toxicity'):
+                logits = model.predict_toxicity(b_ids, b_mask)  # Use predict_toxicity if available
+            else:
+                logits = model(b_ids, b_mask)  # Otherwise, use the model directly
+
+            preds = (logits > 0).long().view(-1).cpu().tolist()  # Thresholding logits
+            predictions.extend(preds)
+
+
+    dataset = dataloader.dataset
+    dataset.add_predictions(predictions)
+    df = dataset.to_pandas()
+    return df

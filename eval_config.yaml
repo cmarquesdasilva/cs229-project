@@ -1,10 +1,14 @@
-option: pretrain
-batch_size: 32
-debug: True
+option: fulltune
+r: 8
+batch_size: 8
+model: bert-tiny
+dropout_rate: 0.1
 lr: 0.001
 epochs: 1
 num_classes: 1
-language: en
+num_classes_translation_task: 1
+language: en,es,de,nl,pt
+lang_pairs: en-es #,en-de,en-nl,en-pt
 model_output_path: models/
-model_name: baseline
-model_path: models/baseline_0.pt
+model_name: tiny_bert_multitask_v3
+model_path: models/tiny_bert_multitask_v3.pt
