@@ -1,5 +1,7 @@
-"""Toxicity Classifiers using Roberta-XLM model for multilingual text classification."""
+"""Toxicity Classifiers using Roberta-XLM model or Tiny-BERT for multilingual text classification."""
+import torch
 import torch.nn.functional as F
+import torch.nn.init as init
 from torch import nn
 from transformers import (
     BertConfig,
@@ -8,9 +10,7 @@ from transformers import (
     AutoModel,
     AutoTokenizer,
 )
-from peft import LoraConfig, TaskType, get_peft_model
-import torch
-import torch.nn.init as init
+from peft import LoraConfig, get_peft_model
 
 
 def initialize_weights(module):
@@ -85,10 +85,14 @@ class ToxicityClassifier(nn.Module):
         self.apply(initialize_weights)
 
     def forward(self, input_ids, attention_mask):
-        outputs = self.model(input_ids, attention_mask)
-        last_hidden_state = outputs.last_hidden_state
-        x = last_hidden_state[:, 0, :]
-        x = self.toxic_dropout(x)
+        output = self.model(input_ids, attention_mask)
+        if hasattr(output, 'pooler_output'):
+            # BERT model
+            output_pooled = output['pooler_output']
+        else:
+            #RoBERTa model
+            output_pooled = output['last_hidden_state'][:, 0, :]
+        x = self.toxic_dropout(output_pooled)
         logits = self.toxic_cls(x)
         return logits
     
@@ -120,7 +124,6 @@ class MultitaskClassifier(ToxicityClassifier):
 
         # Norm Layer
         self.toxic_norm = nn.LayerNorm(self.model.config.hidden_size)
-
         self.translation_norm = nn.LayerNorm(self.model.config.hidden_size)
 
         # Add an additional classifier head for the second task
@@ -132,7 +135,12 @@ class MultitaskClassifier(ToxicityClassifier):
     def forward(self, input_ids, attention_mask):
         'Takes a batch of sentences and produces embeddings for them.'
         output = self.model(input_ids=input_ids, attention_mask=attention_mask)
-        output_pooled = output['pooler_output']
+        if hasattr(output, 'pooler_output'):
+            # BERT model
+            output_pooled = output['pooler_output']
+        else:
+            #RoBERTa model
+            output_pooled = output['last_hidden_state'][:, 0, :]
         return output_pooled
 
     def predict_toxicity(self, input_ids, attention_mask):

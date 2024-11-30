@@ -3,6 +3,7 @@ __pycache__/
 
 # Ignore specific file
 src/test_polygo.py
+models/*
 
 # Ignore all .txt files
 *.txt

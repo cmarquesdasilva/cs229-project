@@ -12,3 +12,4 @@ lang_pairs: en-es #,en-de,en-nl,en-pt
 model_output_path: models/
 model_name: tiny_bert_multitask_v3
 model_path: models/tiny_bert_multitask_v3.pt
+eval_type: validation

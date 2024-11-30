@@ -5,9 +5,9 @@ from torch.utils.data import DataLoader
 from types import SimpleNamespace
 from src.utils import load_model, model_eval
 from src.toxic_dataset import ToxicityDataset
-from src.bachmark_dataset import PolygloToxicityBenchmark
+from src.benchmark_dataset import PolygloToxicityBenchmark
 
-LANGUAGES = ['en', 'pt', 'es', 'de', 'nl']
+LANGUAGES = ['en', 'es'] #,'pt', 'es', 'de', 'nl']
 
 def main():
     results = {}
@@ -17,43 +17,42 @@ def main():
         config = SimpleNamespace(**config_dict)
     model_path = config.model_path
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+    eval_type = config.eval_type
+    
     # Load Toxicity classifier
-    model = load_model(model_path, config, device)
+    model = load_model(model_path, config, device, model_type='toxicity')
 
     # Load Benchmark Dataset for each language
     for lang in LANGUAGES:
         benchmark = PolygloToxicityBenchmark(model.tokenizer, lang=lang, split='ptp', sub_split='small', moderation='balanced')
-        #val_data = ToxicityDataset(model.tokenizer, langs=lang, split='validation')
+        val_data = ToxicityDataset(model.tokenizer, langs=lang, split='validation')
         benchmark_loader = DataLoader(benchmark, batch_size=32, shuffle=False, collate_fn=benchmark.collate_fn)
-        #val_loader = DataLoader(val_data, batch_size=32, shuffle=False, collate_fn=val_data.collate_fn)
-        #test_loader = DataLoader(test_data, batch_size=32, shuffle=False, collate_fn=test_data.collate_fn)
+        val_loader = DataLoader(val_data, batch_size=32, shuffle=False, collate_fn=val_data.collate_fn)
         
         # model evaluation process
         benchmark_acc, benchmark_precision, benchmark_recall, benchmark_f1 = model_eval(benchmark_loader, model, device)
-        #val_acc, val_precision, val_recall, val_f1 = model_eval(val_loader, model, device)
-        #test_acc, test_precision, test_recall, test_f1 = model_eval(test_loader, model, device)
+        val_acc, val_precision, val_recall, val_f1 = model_eval(val_loader, model, device)
 
 
-        results[lang] = {
-            'benchmark_accuracy': benchmark_acc,
-            #'val_accuracy': val_acc,
-            'benchmark_precision_safe': benchmark_precision[0],
-            'benchmark_precision_toxic': benchmark_precision[1],
-            #'val_precision_safe': val_precision[0],
-            #'val_precision_toxic': val_precision[1],
-            'benchmark_recall_safe': benchmark_recall[0],
-            'benchmark_recall_toxic': benchmark_recall[1],
-            #'val_recall_safe': val_recall[0],
-            #'val_recall_toxic': val_recall[1],
-            'benchmark_f1_safe': benchmark_f1[0],
-            'benchmark_f1_toxic': benchmark_f1[1],
-        }
-
-        print(f"Language: {lang}")
-        print(f"Accuracy: {benchmark_acc}")
-        print(f"Precision: {benchmark_precision}")
-        print(f"Recall: {benchmark_recall}")
+        if eval_type == "validation":
+            results[lang] = {
+                'val_accuracy': val_acc,
+                'val_precision_safe': val_precision[0],
+                'val_precision_toxic': val_precision[1],
+                'val_recall_safe': val_recall[0],
+                'val_recall_toxic': val_recall[1],
+                'val_f1_safe': val_f1[0],
+                'val_f1_toxic': val_f1[1],
+            }
+        else:
+            results[lang] = {
+                'benchmark_accuracy': benchmark_acc,
+                'benchmark_precision_safe': benchmark_precision[0],
+                'benchmark_precision_toxic': benchmark_precision[1],
+                'benchmark_recall_safe': benchmark_recall[0],
+                'benchmark_recall_toxic': benchmark_recall[1],
+                'benchmark_f1_safe': benchmark_f1[0],
+                'benchmark_f1_toxic': benchmark_f1[1]}
 
         # Create a DataFrame from the results dictionary
         df_results = pd.DataFrame.from_dict(results, orient='index')

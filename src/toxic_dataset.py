@@ -1,3 +1,7 @@
+"""
+This script defines the ToxicityDataset class, which is used to load and process a multilingual dataset for toxicity classification.
+The dataset can be loaded from multiple languages and supports caching of dataset splits to improve performance.
+"""
 from datasets import load_dataset, concatenate_datasets, Dataset
 import torch
 
@@ -148,3 +152,13 @@ class ToxicityDataset(Dataset):
             'texts': texts,
             'class_ids': class_ids
         }
+    
+    def add_new_examples(self, new_examples):
+        """
+        Adds new examples to the existing dataset.
+
+        Args:
+            new_examples: A dictionary containing new examples.
+        """
+        new_examples_dataset = Dataset.from_dict(new_examples)
+        self.dataset = concatenate_datasets([self.dataset, new_examples_dataset])
