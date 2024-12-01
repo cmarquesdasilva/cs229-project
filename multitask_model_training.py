@@ -24,9 +24,9 @@ def run():
 
     model_name = config.model_name
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    use_small_sample = config.use_small_sample  # Add this option in your config
-    small_sample_size = config.small_sample_size  # Add this to the config too
-    val_sample_size = config.val_sample_size  # Add this to the config too
+    use_small_sample = config.use_small_sample
+    small_sample_size = config.small_sample_size
+    val_sample_size = config.val_sample_size
 
     #--------------- First Section: Model Initialization and Data Preparation ---------------#
     # Model
