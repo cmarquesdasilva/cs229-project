@@ -4,7 +4,6 @@ import torch
 import torch.nn.functional as F
 import yaml
 from torch.utils.data import DataLoader, Subset
-import torch.optim.lr_scheduler as lr_scheduler
 from tqdm import tqdm
 
 from src.toxic_dataset import (
@@ -15,7 +14,7 @@ from src.translation_dataset import (
 )
 from src.utils import save_model, model_eval, save_losses
 
-from src.roberta_clf import MultitaskClassifier
+from src.classifier import MultitaskClassifier
 
 def run():
 
@@ -68,19 +67,6 @@ def run():
     #---------------------------------------------------------------------------------------#
 
     #------------------------ Second Section: Model Training --------------------------------#
-    # Training Loop
-
-
-    # Group parameters for optimizer
-    shared_params = [param for name, param in model.named_parameters() if "toxic" not in name and "translation" not in name]
-    toxicity_params = [param for name, param in model.named_parameters() if "toxic" in name]
-    translation_params = [param for name, param in model.named_parameters() if "translation" in name]
-
-    # Create separate optimizers
-    #optimizer_shared = torch.optim.Adam(shared_params, lr=config.lr)
-    #optimizer_toxicity = torch.optim.Adam(toxicity_params, lr=config.lr)
-    #optimizer_translation = torch.optim.Adam(translation_params, lr=config.lr)
-
     optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
     loss_file = open(f"loss_values_per_epoch_{model_name}.txt", "w")
     best_f1 = 0
@@ -95,10 +81,6 @@ def run():
         ):
             
             optimizer.zero_grad()
-
-            #optimizer_shared.zero_grad()
-            #optimizer_toxicity.zero_grad()
-            #optimizer_translation.zero_grad()
 
             # Toxicity Task
             b_ids = batch_toxicity['token_ids']
@@ -122,18 +104,8 @@ def run():
             
             combined_loss = toxicity_loss + translation_loss
 
-            # Compute Shared Gradients
             combined_loss.backward()
 
-            # Compute Task-Specific Gradients
-            #toxicity_loss.backward(retain_graph=True)
-
-            #translation_loss.backward()
-
-            # Step optimizers
-            #optimizer_shared.step()
-            #optimizer_toxicity.step()
-            #optimizer_translation.step()
             optimizer.step()
 
             train_loss += combined_loss
