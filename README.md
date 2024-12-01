@@ -21,5 +21,3 @@ Evaluate classifiers:
 script: model_extrinsic_evaluation.py
 script: model_intrinsic_evalution.py - embedding evaluation.
 config: eval_config.yaml
-
-## Results:
