@@ -12,7 +12,7 @@ from src.toxic_dataset import (
 )
 from src.utils import save_model, model_eval, save_losses
 
-from src.roberta_clf import ToxicityClassifier, train_model
+from src.classifier import ToxicityClassifier, train_model
 
 def run():
 

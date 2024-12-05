@@ -82,7 +82,7 @@ class ToxicityClassifier(nn.Module):
                 param.requires_grad = True
 
         # Initialize new layers
-        self.apply(initialize_weights)
+        #self.apply(initialize_weights)
 
     def forward(self, input_ids, attention_mask):
         output = self.model(input_ids, attention_mask)
@@ -130,7 +130,7 @@ class MultitaskClassifier(ToxicityClassifier):
         self.translation_cls = nn.Linear(self.model.config.hidden_size, config.num_classes_translation_task)
 
         # Initialize new layers
-        self.apply(initialize_weights)
+        #self.apply(initialize_weights)
 
     def forward(self, input_ids, attention_mask):
         'Takes a batch of sentences and produces embeddings for them.'

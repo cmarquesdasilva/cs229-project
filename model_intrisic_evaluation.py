@@ -20,9 +20,10 @@ def main():
         config = SimpleNamespace(**config_dict)
     model_path = config.model_path
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model_type = config.model_name.split('_')[2]
+    #model_type = config.model_name.split('_')[2]
+    
     # Load Toxicity classifier
-    model = load_model(model_path, config, device, model_type=model_type)
+    model = load_model(model_path, config, device, model_type="multitask")
 
     # Load Benchmark Dataset for all laguages
     for lang in LANGUAGES:

@@ -7,7 +7,8 @@ from src.utils import load_model, model_eval
 from src.toxic_dataset import ToxicityDataset
 from src.benchmark_dataset import PolygloToxicityBenchmark
 
-LANGUAGES = ['en', 'es'] #,'pt', 'es', 'de', 'nl']
+BENCHMARK_LANGUAGES = ['en', 'es', 'pt', 'de', 'nl']
+EVAL_LANGUAGES = ['en', 'es','de']
 
 def main():
     results = {}
@@ -18,23 +19,20 @@ def main():
     model_path = config.model_path
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     eval_type = config.eval_type
-    
+
     # Load Toxicity classifier
-    model = load_model(model_path, config, device, model_type='toxicity')
+    if 'multitask' not in config.model_name:
+        print('Loading single task model')
+        model = load_model(model_path, config, device)
+    else:
+        model = load_model(model_path, config, device, model_type='multitask')
 
     # Load Benchmark Dataset for each language
-    for lang in LANGUAGES:
-        benchmark = PolygloToxicityBenchmark(model.tokenizer, lang=lang, split='ptp', sub_split='small', moderation='balanced')
-        val_data = ToxicityDataset(model.tokenizer, langs=lang, split='validation')
-        benchmark_loader = DataLoader(benchmark, batch_size=32, shuffle=False, collate_fn=benchmark.collate_fn)
-        val_loader = DataLoader(val_data, batch_size=32, shuffle=False, collate_fn=val_data.collate_fn)
-        
-        # model evaluation process
-        benchmark_acc, benchmark_precision, benchmark_recall, benchmark_f1 = model_eval(benchmark_loader, model, device)
-        val_acc, val_precision, val_recall, val_f1 = model_eval(val_loader, model, device)
-
-
-        if eval_type == "validation":
+    if eval_type == "validation":
+        for lang in EVAL_LANGUAGES:
+            val_data = ToxicityDataset(model.tokenizer, langs=lang, split='validation')
+            val_loader = DataLoader(val_data, batch_size=32, shuffle=False, collate_fn=val_data.collate_fn)
+            val_acc, val_precision, val_recall, val_f1 = model_eval(val_loader, model, device)
             results[lang] = {
                 'val_accuracy': val_acc,
                 'val_precision_safe': val_precision[0],
@@ -44,7 +42,11 @@ def main():
                 'val_f1_safe': val_f1[0],
                 'val_f1_toxic': val_f1[1],
             }
-        else:
+    else:
+        for lang in BENCHMARK_LANGUAGES:
+            benchmark = PolygloToxicityBenchmark(model.tokenizer, lang=lang, split='ptp', sub_split='small', moderation='balanced')
+            benchmark_loader = DataLoader(benchmark, batch_size=32, shuffle=False, collate_fn=benchmark.collate_fn)
+            benchmark_acc, benchmark_precision, benchmark_recall, benchmark_f1 = model_eval(benchmark_loader, model, device)
             results[lang] = {
                 'benchmark_accuracy': benchmark_acc,
                 'benchmark_precision_safe': benchmark_precision[0],
